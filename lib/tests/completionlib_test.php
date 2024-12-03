@@ -2086,6 +2086,97 @@ final class completionlib_test extends advanced_testcase {
             ['course' => $this->course->id]
         ));
     }
+
+    /**
+     * Test for count_modules_completed().
+     *
+     * @covers ::count_modules_completed
+     */
+    public function test_count_modules_completed(): void {
+        global $DB;
+
+        $this->setAdminUser();
+        $this->setup_data();
+
+        $student = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($student->id, $this->course->id);
+
+        $unexistinguserid = 123;
+
+        // Create 5 users and assign them to a course.
+        for ($i = 0; $i < 5; $i++) {
+            $user = $this->getDataGenerator()->create_user();
+            $this->getDataGenerator()->enrol_user($user->id, $this->course->id);
+            $users[] = $user;
+        }
+
+        /** @var \mod_assign_generator $assigngenerator */
+        $assigngenerator = $this->getDataGenerator()->get_plugin_generator('mod_assign');
+        $modassign = $assigngenerator->create_instance([
+            'course' => $this->course->id,
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionsubmit' => true,
+        ]);
+        $cmassign = get_coursemodule_from_instance('assign', $modassign->id);
+
+        $choicegenerator = $this->getDataGenerator()->get_plugin_generator('mod_choice');
+        $modchoice = $choicegenerator->create_instance([
+            'course' => $this->course->id,
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionsubmit' => true,
+        ]);
+        $cmchoice = get_coursemodule_from_instance('choice', $modchoice->id);
+
+        $lessongenerator = $this->getDataGenerator()->get_plugin_generator('mod_lesson');
+        $modlesson = $lessongenerator->create_instance([
+            'course' => $this->course->id,
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionsubmit' => true,
+        ]);
+        $cmlesson = get_coursemodule_from_instance('lesson', $modlesson->id);
+
+        foreach ($users as $user) {
+            $cmcompletionrecords[] = (object)[
+                'coursemoduleid' => $cmassign->id,
+                'userid' => $user->id,
+                'completionstate' => COMPLETION_COMPLETE,
+                'timemodified' => 0,
+            ];
+        }
+
+        // Get the last 3 elements of the users array.
+        $userswithmorecompletion = array_slice($users, 2);
+        foreach ($userswithmorecompletion as $user) {
+            $cmcompletionrecords[] = (object)[
+                'coursemoduleid' => $cmchoice->id,
+                'userid' => $user->id,
+                'completionstate' => COMPLETION_COMPLETE,
+                'timemodified' => 0,
+            ];
+            $cmcompletionrecords[] = (object)[
+                'coursemoduleid' => $cmlesson->id,
+                'userid' => $user->id,
+                'completionstate' => COMPLETION_COMPLETE,
+                'timemodified' => 0,
+            ];
+        }
+
+        $DB->insert_records('course_modules_completion', $cmcompletionrecords);
+
+        $completion = new completion_info($this->course);
+
+        $this->assertEquals(1, $completion->count_modules_completed($users[0]->id));
+        $this->assertEquals(1, $completion->count_modules_completed($users[1]->id));
+        $this->assertEquals(3, $completion->count_modules_completed($users[2]->id));
+        $this->assertEquals(3, $completion->count_modules_completed($users[3]->id));
+        $this->assertEquals(3, $completion->count_modules_completed($users[4]->id));
+
+        // Assert user has no completions.
+        $this->assertEquals(0, $completion->count_modules_completed($student->id));
+
+        // Asset unexisting user has no completions.
+        $this->assertEquals(0, $completion->count_modules_completed($unexistinguserid));
+    }
 }
 
 class core_completionlib_fake_recordset implements Iterator {
