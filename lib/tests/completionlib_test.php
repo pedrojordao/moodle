@@ -2086,6 +2086,85 @@ final class completionlib_test extends advanced_testcase {
             ['course' => $this->course->id]
         ));
     }
+
+    /**
+     * Test for count_modules_completed().
+     *
+     * @covers ::count_modules_completed
+     */
+    public function test_count_modules_completed(): void {
+        global $DB;
+
+        $this->setup_data();
+        $this->setUser($this->user);
+
+        $user2 = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($user2->id, $this->course->id);
+
+        $user3 = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($user3->id, $this->course->id);
+
+        /** @var \mod_assign_generator $assigngenerator */
+        $assigngenerator = $this->getDataGenerator()->get_plugin_generator('mod_assign');
+        $assign = $assigngenerator->create_instance([
+            'course' => $this->course->id,
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionsubmit' => true,
+        ]);
+        $assign1 = $assigngenerator->create_instance([
+            'course' => $this->course->id,
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionsubmit' => true,
+        ]);
+
+        $cm = get_coursemodule_from_instance('assign', $assign->id);
+        $cmcompletionrecord = (object) [
+            'coursemoduleid' => $cm->id,
+            'userid' => $this->user->id,
+            'completionstate' => COMPLETION_COMPLETE,
+            'timemodified' => 0,
+        ];
+
+        $cm1 = get_coursemodule_from_instance('assign', $assign1->id);
+        $cmcompletionrecord2 = (object) [
+            'coursemoduleid' => $cm1->id,
+            'userid' => $this->user->id,
+            'completionstate' => COMPLETION_COMPLETE_PASS,
+            'timemodified' => 0,
+        ];
+
+        $cm2 = get_coursemodule_from_instance('assign', $assign1->id);
+        $cmcompletionrecord3 = (object) [
+            'coursemoduleid' => $cm2->id,
+            'userid' => $user2->id,
+            'completionstate' => COMPLETION_COMPLETE,
+            'timemodified' => 0,
+        ];
+
+        $DB->insert_records('course_modules_completion', [
+            $cmcompletionrecord,
+            $cmcompletionrecord2,
+            $cmcompletionrecord3,
+        ]);
+
+        $count = $DB->count_records('course_modules_completion', ['userid' => $this->user->id]);
+        $completion = new completion_info($this->course);
+        $totalcompleted = $completion->count_modules_completed($this->user->id);
+        // Assert user with two completions.
+        $this->assertEquals($count, $totalcompleted);
+
+        $count = $DB->count_records('course_modules_completion', ['userid' => $user2->id]);
+        $completion = new completion_info($this->course);
+        $totalcompleted = $completion->count_modules_completed($user2->id);
+        // Assert user with one completion.
+        $this->assertEquals($count, $totalcompleted);
+
+        $count = $DB->count_records('course_modules_completion', ['userid' => $user3->id]);
+        $completion = new completion_info($this->course);
+        $totalcompleted = $completion->count_modules_completed($user3->id);
+        // Assert user with no completions.
+        $this->assertEquals($count, $totalcompleted);
+    }
 }
 
 class core_completionlib_fake_recordset implements Iterator {
